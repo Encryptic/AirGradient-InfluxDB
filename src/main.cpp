@@ -104,6 +104,11 @@ void setup()
   display.init();
   display.flipScreenVertically();
 
+  if(!LittleFS.begin()) {
+      Serial.println("LittleFS Mount Failed");
+      return;
+  }
+
   String deviceId(ESP.getChipId(), HEX);
   showTextRectangle("Init", deviceId, true);
 
@@ -124,7 +129,11 @@ void setup()
     connectToWifi();
   delay(2000);
 
+  Serial.println("Synchronizing time with NTP Servers");
   timeSync(TZ_INFO, "pool.ntp.org", "time.nis.gov", "time-a-g.nist.gov");
+
+  Serial.println("Loading config from json file");
+  loadConfig();
 
   // Check server connection
   if (client->validateConnection())
