@@ -1,5 +1,5 @@
 /*
-Adapted firmware designed to be run with a Push to InfluxDB.
+Adapted firmware designed to be run with a push to InfluxDB.
 
 This is the code for the AirGradient DIY Air Quality Sensor with an ESP8266 Microcontroller.
 
@@ -51,7 +51,6 @@ ESP8266WiFiMulti wifiMulti;
 #endif
 
 #include <InfluxDbClient.h>
-#include <InfluxDbCloud.h>
 
 // Set timezone string according to https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html
 // Examples:
@@ -72,13 +71,10 @@ boolean hasCO2 = true;
 boolean hasSHT = true;
 
 Point wifiSensor("wifi_status");
-Point co2Sensor("co2");
-Point pmSensor("pm2");
-Point tempSensor("temp");
-Point humiditySensor("humidity");
+Point sensor("airgradient");
 
-#define MAX_SENSOR_COUNT 5
-Point allSensors[MAX_SENSOR_COUNT] = {wifiSensor, co2Sensor, pmSensor, tempSensor, humiditySensor};
+#define MAX_SENSOR_COUNT 2
+Point *allSensors[MAX_SENSOR_COUNT] = {&wifiSensor, &sensor};
 
 // set to true if you want to connect to wifi. The display will show values only when the sensor has wifi connection
 boolean connectWIFI = true;
@@ -93,8 +89,9 @@ void connectToWifi();
 bool loadConfig();
 void showTextRectangle(String ln1, String ln2, boolean small);
 
-// InfluxDB client instance
-InfluxDBClient *client = NULL;
+// InfluxDB client instance with preconfigured InfluxCloud certificate
+InfluxDBClient client = InfluxDBClient();
+
 DeviceConfig_t deviceConfig;
 
 void setup()
@@ -114,8 +111,8 @@ void setup()
 
   for (int i = 0; i < MAX_SENSOR_COUNT; i++)
   {
-    allSensors[i].addTag("device", DEVICE);
-    allSensors[i].addTag("id", deviceId);
+    allSensors[i]->addTag("device", DEVICE);
+    allSensors[i]->addTag("id", deviceId);
   }
 
   if (hasPM)
@@ -136,24 +133,30 @@ void setup()
   loadConfig();
 
   // Check server connection
-  if (client->validateConnection())
+  if (client.validateConnection())
   {
     Serial.print("Connected to InfluxDB: ");
-    Serial.println(client->getServerUrl());
+    Serial.println(client.getServerUrl());
   }
   else
   {
     Serial.print("InfluxDB connection failed: ");
-    Serial.println(client->getLastErrorMessage());
+    Serial.println(client.getLastErrorMessage());
   }
 }
 
+
 void loop()
 {
-
+  for (int i = 0; i < MAX_SENSOR_COUNT; i++)
+  {
+    allSensors[i]->clearFields();
+  }
+  
   if (hasPM)
   {
     int PM2 = ag.getPM2_Raw();
+    sensor.addField("pm2.5", PM2);
     showTextRectangle("PM2", String(PM2), false);
     delay(3000);
   }
@@ -161,6 +164,7 @@ void loop()
   if (hasCO2)
   {
     int CO2 = ag.getCO2_Raw();
+    sensor.addField("co2", CO2);
     showTextRectangle("CO2", String(CO2), false);
     delay(3000);
   }
@@ -168,14 +172,26 @@ void loop()
   if (hasSHT)
   {
     TMP_RH result = ag.periodicFetchData();
+    sensor.addField("temp", result.t);
+    sensor.addField("humidity", result.rh);
     showTextRectangle(String(result.t), String(result.rh) + "%", false);
     delay(3000);
   }
 
-  // send payload
-  if (connectWIFI)
+  wifiSensor.addField("rssi", WiFi.RSSI());
+
+  // If no Wifi signal, try to reconnect it
+  if (wifiMulti.run() != WL_CONNECTED) {
+    Serial.println("Wifi connection lost");
+  }
+
+  for (int i = 0; i < MAX_SENSOR_COUNT; i++)
   {
-    Serial.println("TODO: Output feedback");
+    // Write point
+    if (!client.writePoint(*allSensors[i])) {
+      Serial.print("InfluxDB write failed: ");
+      Serial.println(client.getLastErrorMessage());
+    }
   }
 }
 
@@ -202,8 +218,8 @@ bool loadConfig()
   const char *org = doc["influx_db"]["org"];
   const char *bucket = doc["influx_db"]["bucket"];
 
-  //InfluxDBClient::InfluxDBClient(const char *serverUrl, const char *org, const char *bucket, const char *authToken)
-  client = new InfluxDBClient(url, org, bucket, token);
+  client.setConnectionParams(url, org, bucket, token);
+  client.setInsecure(true);
 
   const char *deviceName = doc["deviceName"];
   deviceConfig.sampleDelay = doc["deviceName"] | 10000;
