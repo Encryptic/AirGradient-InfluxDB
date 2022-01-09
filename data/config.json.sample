@@ -1,0 +1,9 @@
+{
+    "timezone": "EST5EDT",
+    "influx_db": {
+        "url": "https://www.influxisawesome.com:8086",
+        "token": "abcdefg123",
+        "org": "airgradient",
+        "bucket": "airgradient"
+    }
+}
