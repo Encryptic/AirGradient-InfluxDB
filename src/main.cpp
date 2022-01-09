@@ -70,11 +70,7 @@ boolean hasPM = true;
 boolean hasCO2 = true;
 boolean hasSHT = true;
 
-Point wifiSensor("wifi_status");
 Point sensor("airgradient");
-
-#define MAX_SENSOR_COUNT 2
-Point *allSensors[MAX_SENSOR_COUNT] = {&wifiSensor, &sensor};
 
 // set to true if you want to connect to wifi. The display will show values only when the sensor has wifi connection
 boolean connectWIFI = true;
@@ -109,11 +105,8 @@ void setup()
   String deviceId(ESP.getChipId(), HEX);
   showTextRectangle("Init", deviceId, true);
 
-  for (int i = 0; i < MAX_SENSOR_COUNT; i++)
-  {
-    allSensors[i]->addTag("device", DEVICE);
-    allSensors[i]->addTag("id", deviceId);
-  }
+  sensor.addTag("device", DEVICE);
+  sensor.addTag("id", deviceId);
 
   if (hasPM)
     ag.PMS_Init();
@@ -148,10 +141,7 @@ void setup()
 
 void loop()
 {
-  for (int i = 0; i < MAX_SENSOR_COUNT; i++)
-  {
-    allSensors[i]->clearFields();
-  }
+  sensor.clearFields();
   
   if (hasPM)
   {
@@ -172,26 +162,24 @@ void loop()
   if (hasSHT)
   {
     TMP_RH result = ag.periodicFetchData();
-    sensor.addField("temp", result.t);
+    sensor.addField("temp_c", result.t);
+    sensor.addField("temp_f", (result.t * 1.8f) + 32);
     sensor.addField("humidity", result.rh);
     showTextRectangle(String(result.t), String(result.rh) + "%", false);
     delay(3000);
   }
 
-  wifiSensor.addField("rssi", WiFi.RSSI());
+  sensor.addField("rssi", WiFi.RSSI());
 
   // If no Wifi signal, try to reconnect it
   if (wifiMulti.run() != WL_CONNECTED) {
     Serial.println("Wifi connection lost");
   }
 
-  for (int i = 0; i < MAX_SENSOR_COUNT; i++)
-  {
-    // Write point
-    if (!client.writePoint(*allSensors[i])) {
-      Serial.print("InfluxDB write failed: ");
-      Serial.println(client.getLastErrorMessage());
-    }
+  // Write point
+  if (!client.writePoint(sensor)) {
+    Serial.print("InfluxDB write failed: ");
+    Serial.println(client.getLastErrorMessage());
   }
 }
 
@@ -220,16 +208,15 @@ bool loadConfig()
 
   client.setConnectionParams(url, org, bucket, token);
   client.setInsecure(true);
+  //client.setHTTPOptions(HTTPOptions().connectionReuse(true));
 
   const char *deviceName = doc["deviceName"];
   deviceConfig.sampleDelay = doc["deviceName"] | 10000;
 
-  if (deviceName != nullptr)
-  {
+  if (deviceName != nullptr) {
     strlcpy(deviceConfig.deviceName, deviceName, 32);
   }
-  else
-  {
+  else {
     strcpy(deviceConfig.deviceName, "unknown_device");
   }
 
