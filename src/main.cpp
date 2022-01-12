@@ -27,6 +27,8 @@ https://www.airgradient.com/schools/
 MIT License
 */
 
+#include "config.h"
+
 #include <string.h>
 #include <Arduino.h>
 #include <AirGradient.h>
@@ -51,6 +53,10 @@ ESP8266WiFiMulti wifiMulti;
 #endif
 
 #include <InfluxDbClient.h>
+
+#ifdef USE_IRSG_ROOT_CERT
+#include <InfluxDbCloud.h>
+#endif
 
 // Set timezone string according to https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html
 // Examples:
@@ -162,10 +168,11 @@ void loop()
   if (hasSHT)
   {
     TMP_RH result = ag.periodicFetchData();
+    float temp_f = (result.t * 1.8f) + 32;
     sensor.addField("temp_c", result.t);
-    sensor.addField("temp_f", (result.t * 1.8f) + 32);
+    sensor.addField("temp_f", temp_f);
     sensor.addField("humidity", result.rh);
-    showTextRectangle(String(result.t), String(result.rh) + "%", false);
+    showTextRectangle(String(temp_f), String(result.rh) + "%", false);
     delay(3000);
   }
 
@@ -186,8 +193,7 @@ void loop()
 bool loadConfig()
 {
   File configFile = LittleFS.open("/config.json", "r");
-  if (!configFile)
-  {
+  if (!configFile) {
     Serial.println("Failed to open config file");
     return false;
   }
@@ -206,9 +212,19 @@ bool loadConfig()
   const char *org = doc["influx_db"]["org"];
   const char *bucket = doc["influx_db"]["bucket"];
 
+#ifdef USE_IRSG_ROOT_CERT
+  client.setConnectionParams(url, org, bucket, token, InfluxDbCloud2CACert);
+  // Disables certificate verification
+  // const bool insecureMode = doc["influx_db"]["insecure_mode"];
+  client.setInsecure(insecureMode);
+#else
   client.setConnectionParams(url, org, bucket, token);
   client.setInsecure(true);
-  //client.setHTTPOptions(HTTPOptions().connectionReuse(true));
+#endif
+
+#if ENABLE_CONNECTION_REUSE  
+  client.setHTTPOptions(HTTPOptions().connectionReuse(true));
+#endif
 
   const char *deviceName = doc["deviceName"];
   deviceConfig.sampleDelay = doc["deviceName"] | 10000;
