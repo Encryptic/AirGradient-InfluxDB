@@ -1,31 +1,31 @@
-/*
-Adapted firmware designed to be run with a push to InfluxDB.
-
-This is the code for the AirGradient DIY Air Quality Sensor with an ESP8266 Microcontroller.
-
-It is a high quality sensor showing PM2.5, CO2, Temperature and Humidity on a small display and can send data over Wifi.
-
-For build instructions please visit https://www.airgradient.com/diy/
-
-Compatible with the following sensors:
-Plantower PMS5003 (Fine Particle Sensor)
-SenseAir S8 (CO2 Sensor)
-SHT30/31 (Temperature/Humidity Sensor)
-
-Please install ESP8266 board manager (tested with version 3.0.0)
-
-The codes needs the following libraries installed:
-"WifiManager by tzapu, tablatronix" tested with Version 2.0.3-alpha
-"ESP8266 and ESP32 OLED driver for SSD1306 displays by ThingPulse, Fabrice Weinberg" tested with Version 4.1.0
-
-Configuration:
-Please set in the code below which sensor you are using and if you want to connect it to WiFi.
-
-If you are a school or university contact us for a free trial on the AirGradient platform.
-https://www.airgradient.com/schools/
-
-MIT License
-*/
+/**
+ * Adapted firmware designed to be run with a push to InfluxDB.
+ *
+ * This is the code for the AirGradient DIY Air Quality Sensor with an ESP8266 Microcontroller.
+ *
+ * It is a high quality sensor showing PM2.5, CO2, Temperature and Humidity on a small display and can send data over Wifi.
+ *
+ * For build instructions please visit https://www.airgradient.com/diy/
+ *
+ * Compatible with the following sensors:
+ * Plantower PMS5003 (Fine Particle Sensor)
+ * SenseAir S8 (CO2 Sensor)
+ * SHT30/31 (Temperature/Humidity Sensor)
+ *
+ * Please install ESP8266 board manager (tested with version 3.0.0)
+ *
+ * The codes needs the following libraries installed:
+ * "WifiManager by tzapu, tablatronix" tested with Version 2.0.3-alpha
+ * "ESP8266 and ESP32 OLED driver for SSD1306 displays by ThingPulse, Fabrice Weinberg" tested with Version 4.1.0
+ *
+ * Configuration:
+ * Please set in the code below which sensor you are using and if you want to connect it to WiFi.
+ *
+ * If you are a school or university contact us for a free trial on the AirGradient platform.
+ * https://www.airgradient.com/schools/
+ *
+ * MIT License
+ **/
 
 #include "config.h"
 
@@ -38,7 +38,12 @@ MIT License
 #include <ArduinoJson.h>
 
 #include <Wire.h>
-#include "SSD1306Wire.h"
+
+#if defined(U8G2_BOTTOM) || defined(U8G2_TOP)
+#include <U8g2lib.h>
+#else
+#include <SSD1306Wire.h>
+#endif
 
 #include <LittleFS.h>
 
@@ -69,7 +74,16 @@ ESP8266WiFiMulti wifiMulti;
 
 AirGradient ag = AirGradient();
 
+
+#if defined(U8G2_BOTTOM)
+// Display bottom right
+U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+#elif defined(U8G2_TOP)
+// Replace above if you have display on top left
+U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R2, /* reset=*/ U8X8_PIN_NONE);
+#else
 SSD1306Wire display(0x3c, SDA, SCL);
+#endif
 
 // set sensors that you do not use to false
 boolean hasPM = true;
@@ -100,12 +114,13 @@ void setup()
 {
   Serial.begin(115200);
 
-  display.init();
-  display.flipScreenVertically();
+  // display.init();
+  display.begin();
 
-  if(!LittleFS.begin()) {
-      Serial.println("LittleFS Mount Failed");
-      return;
+  if (!LittleFS.begin())
+  {
+    Serial.println("LittleFS Mount Failed");
+    return;
   }
 
   String deviceId(ESP.getChipId(), HEX);
@@ -144,11 +159,10 @@ void setup()
   }
 }
 
-
 void loop()
 {
   sensor.clearFields();
-  
+
   if (hasPM)
   {
     int PM2 = ag.getPM2_Raw();
@@ -179,12 +193,14 @@ void loop()
   sensor.addField("rssi", WiFi.RSSI());
 
   // If no Wifi signal, try to reconnect it
-  if (wifiMulti.run() != WL_CONNECTED) {
+  if (wifiMulti.run() != WL_CONNECTED)
+  {
     Serial.println("Wifi connection lost");
   }
 
   // Write point
-  if (!client.writePoint(sensor)) {
+  if (!client.writePoint(sensor))
+  {
     Serial.print("InfluxDB write failed: ");
     Serial.println(client.getLastErrorMessage());
   }
@@ -193,7 +209,8 @@ void loop()
 bool loadConfig()
 {
   File configFile = LittleFS.open("/config.json", "r");
-  if (!configFile) {
+  if (!configFile)
+  {
     Serial.println("Failed to open config file");
     return false;
   }
@@ -222,19 +239,24 @@ bool loadConfig()
   client.setInsecure(true);
 #endif
 
-#if ENABLE_CONNECTION_REUSE  
+#if ENABLE_CONNECTION_REUSE
   client.setHTTPOptions(HTTPOptions().connectionReuse(true));
 #endif
 
   const char *deviceName = doc["deviceName"];
   deviceConfig.sampleDelay = doc["deviceName"] | 10000;
 
-  if (deviceName != nullptr) {
+  if (deviceName != nullptr)
+  {
     strlcpy(deviceConfig.deviceName, deviceName, 32);
   }
-  else {
+  else
+  {
     strcpy(deviceConfig.deviceName, "unknown_device");
   }
+
+  Serial.print("Device Name: ");
+  Serial.println(deviceConfig.deviceName);
 
   return true;
 }
@@ -242,26 +264,22 @@ bool loadConfig()
 // DISPLAY
 void showTextRectangle(String ln1, String ln2, boolean small)
 {
-  display.clear();
-  display.setTextAlignment(TEXT_ALIGN_LEFT);
-  if (small)
-  {
-    display.setFont(ArialMT_Plain_16);
-  }
-  else
-  {
-    display.setFont(ArialMT_Plain_24);
-  }
-  display.drawString(32, 16, ln1);
-  display.drawString(32, 36, ln2);
-  display.display();
+  // display.clear();
+  display.firstPage();
+  display.firstPage();
+   do {
+    display.setFont(u8g2_font_t0_16_tf);
+    display.drawStr(1, 10, String(ln1).c_str());
+    display.drawStr(1, 30, String(ln2).c_str());
+    // display.drawStr(1, 50, String(ln3).c_str());
+  } while ( display.nextPage() );
 }
 
 // Wifi Manager
 void connectToWifi()
 {
   WiFiManager wifiManager;
-  //WiFi.disconnect(); //to delete previous saved hotspot
+  // WiFi.disconnect(); //to delete previous saved hotspot
   String HOTSPOT = "AIRGRADIENT-" + String(ESP.getChipId(), HEX);
   wifiManager.setTimeout(120);
   if (!wifiManager.autoConnect((const char *)HOTSPOT.c_str()))

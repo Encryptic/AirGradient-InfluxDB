@@ -12,4 +12,6 @@
 //
 //#define ENABLE_CONNECTION_REUSE
 
+#define U8G2_TOP
+
 #endif //__CONFIG_H__
