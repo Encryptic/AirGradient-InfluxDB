@@ -74,13 +74,12 @@ ESP8266WiFiMulti wifiMulti;
 
 AirGradient ag = AirGradient();
 
-
 #if defined(U8G2_BOTTOM)
 // Display bottom right
-U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R0, /* reset=*/U8X8_PIN_NONE);
 #elif defined(U8G2_TOP)
 // Replace above if you have display on top left
-U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R2, /* reset=*/ U8X8_PIN_NONE);
+U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R2, /* reset=*/U8X8_PIN_NONE);
 #else
 SSD1306Wire display(0x3c, SDA, SCL);
 #endif
@@ -126,9 +125,6 @@ void setup()
   String deviceId(ESP.getChipId(), HEX);
   showTextRectangle("Init", deviceId, true);
 
-  sensor.addTag("device", DEVICE);
-  sensor.addTag("id", deviceId);
-
   if (hasPM)
     ag.PMS_Init();
   if (hasCO2)
@@ -145,6 +141,11 @@ void setup()
 
   Serial.println("Loading config from json file");
   loadConfig();
+
+  // Set the config after load
+  sensor.addTag("device", DEVICE);
+  sensor.addTag("id", deviceId);
+  sensor.addTag("deviceName", deviceConfig.deviceName);
 
   // Check server connection
   if (client.validateConnection())
@@ -166,16 +167,27 @@ void loop()
   if (hasPM)
   {
     int PM2 = ag.getPM2_Raw();
-    sensor.addField("pm2.5", PM2);
-    showTextRectangle("PM2", String(PM2), false);
+    if (PM2 >= 0) {
+      sensor.addField("pm2.5", PM2);
+      showTextRectangle("PM2", String(PM2), false);
+    }
+    else {
+      showTextRectangle("PM2", "error", false);
+    }
+    
     delay(3000);
   }
 
   if (hasCO2)
   {
     int CO2 = ag.getCO2_Raw();
-    sensor.addField("co2", CO2);
-    showTextRectangle("CO2", String(CO2), false);
+    if (CO2 > 0) {
+      sensor.addField("co2", CO2);
+      showTextRectangle("CO2", String(CO2), false);
+    }
+    else {
+      showTextRectangle("CO2", "error", false);
+    }
     delay(3000);
   }
 
@@ -243,8 +255,8 @@ bool loadConfig()
   client.setHTTPOptions(HTTPOptions().connectionReuse(true));
 #endif
 
-  const char *deviceName = doc["deviceName"];
-  deviceConfig.sampleDelay = doc["deviceName"] | 10000;
+  const char *deviceName = doc["device_name"];
+  deviceConfig.sampleDelay = doc["sample_delay"] | 10000;
 
   if (deviceName != nullptr)
   {
@@ -264,15 +276,15 @@ bool loadConfig()
 // DISPLAY
 void showTextRectangle(String ln1, String ln2, boolean small)
 {
-  // display.clear();
   display.firstPage();
   display.firstPage();
-   do {
+  do
+  {
     display.setFont(u8g2_font_t0_16_tf);
     display.drawStr(1, 10, String(ln1).c_str());
     display.drawStr(1, 30, String(ln2).c_str());
     // display.drawStr(1, 50, String(ln3).c_str());
-  } while ( display.nextPage() );
+  } while (display.nextPage());
 }
 
 // Wifi Manager

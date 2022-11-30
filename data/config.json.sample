@@ -1,4 +1,5 @@
 {
+    "device_name": "Office",
     "timezone": "EST5EDT",
     "influx_db": {
         "url": "https://www.influxisawesome.com:8086",
