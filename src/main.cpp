@@ -162,6 +162,13 @@ void setup()
 
 void loop()
 {
+  // If no Wifi signal, try to reconnect it
+  if (wifiMulti.run() != WL_CONNECTED)
+  {
+    delay(500);
+    return;
+  }
+
   sensor.clearFields();
 
   if (hasPM)
@@ -204,12 +211,6 @@ void loop()
 
   sensor.addField("rssi", WiFi.RSSI());
 
-  // If no Wifi signal, try to reconnect it
-  if (wifiMulti.run() != WL_CONNECTED)
-  {
-    Serial.println("Wifi connection lost");
-  }
-
   // Write point
   if (!client.writePoint(sensor))
   {
@@ -243,9 +244,8 @@ bool loadConfig()
 
 #ifdef USE_IRSG_ROOT_CERT
   client.setConnectionParams(url, org, bucket, token, InfluxDbCloud2CACert);
-  // Disables certificate verification
-  // const bool insecureMode = doc["influx_db"]["insecure_mode"];
-  client.setInsecure(insecureMode);
+  client.setInsecure(false);
+  Serial.println("Set InfluxDB Client to use certificate validation");
 #else
   client.setConnectionParams(url, org, bucket, token);
   client.setInsecure(true);
@@ -292,13 +292,14 @@ void connectToWifi()
 {
   WiFiManager wifiManager;
   // WiFi.disconnect(); //to delete previous saved hotspot
-  String HOTSPOT = "AIRGRADIENT-" + String(ESP.getChipId(), HEX);
   wifiManager.setTimeout(120);
-  if (!wifiManager.autoConnect((const char *)HOTSPOT.c_str()))
+  if (!wifiManager.autoConnect())
   {
     Serial.println("failed to connect and hit timeout");
     delay(3000);
     ESP.restart();
     delay(5000);
   }
+  wifiManager.setWiFiAutoReconnect(true);
+  wifiManager.setRestorePersistent(true);
 }
